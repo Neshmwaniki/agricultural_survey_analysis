@@ -13,8 +13,10 @@ library(scales)
 ### check working directory
 getwd()
 
+setwd("D:/Njambanene/Njambanene/R/R/Case Study/FACS")
 ### read dataset
-dt0 <- readxl::read_xlsx("../Documents/R/Case Study/Case_2_Statistics.xlsx")
+
+dt0 <- readxl::read_xlsx("../FACS/Case_2_Statistics.xlsx")
 
 ### preview
 glimpse(dt0)
@@ -24,14 +26,14 @@ head(dt0)
 #### mapping gender labels
 
 dt1 <-dt0 %>%
-  mutate(across(starts_with("gender"),~ recode(.x ,'1' = "Male",'2' = "Female",.missing = "Female")) )
+  mutate(across(starts_with("gender"),~ recode(as.character(.x)  ,'1' = "Male",'2' = "Female",.missing = "Female")) )
 
 head(dt1)
 
 #### mapping married labels
 
 dt2 <- dt1 %>%
-  mutate(married1 = recode(married1,'1' = "Married",'2' = "Never Married",'3' = "Previously Married",'4' = "NA"))
+  mutate(married1 = recode(as.character(married1),'1' = "Married",'2' = "Never Married",'3' = "Previously Married",'4' = "NA"))
 
 head(dt2)
 
