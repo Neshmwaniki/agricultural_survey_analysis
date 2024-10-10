@@ -1,0 +1,394 @@
+---
+title: "Agricultural Survey of African Farm Households"
+author: "Denis Mwaniki"
+date: " `r as.Date(Sys.time())` "
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE, cache=F}
+knitr::opts_chunk$set(echo = F, warning = F, message = F, fig.width = 10, fig.height = 10)
+
+```
+
+## Importing Datasets and Preprocesing
+
+### Importing Libraries
+
+```{r packages}
+
+### clear environment
+rm(list = ls())
+
+
+
+# load libraries
+
+library(tidyverse)
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(scales)
+
+```
+
+### Reading the data
+
+```{r datasets, echo=TRUE}
+
+### check working directory
+getwd()
+
+setwd("D:/Njambanene/Njambanene/R/R/Case Study/FACS")
+### read dataset
+
+dt0 <- readxl::read_xlsx("../FACS/Case_2_Statistics.xlsx")
+### preview
+glimpse(dt0)
+head(dt0)
+
+```
+
+
+### Cleaning
+
+```{r dataset cleaning1, echo=TRUE}
+
+#### mapping gender labels
+
+dt1 <-dt0 %>%
+  mutate(across(starts_with("gender"),~ recode(as.character(.x)  ,'1' = "Male",'2' = "Female",.missing = "Female")) )
+
+head(dt1)
+
+```
+
+
+```{r dataset cleaning2, echo=TRUE}
+
+#### mapping married labels
+
+dt2 <- dt1 %>%
+  mutate(married1 = recode(as.character(married1),'1' = "Married",'2' = "Never Married",'3' = "Previously Married",'4' = "NA"))
+
+head(dt2)
+
+```
+
+## Exploratory Data Analysis
+
+```{r hh size, echo=TRUE}
+
+#### get size of hh
+##### men & women in hh
+
+dt3 <- dt2 %>%
+  rowwise() %>%
+  mutate(
+    num_men = sum(c_across(starts_with("gender")) =="Male",na.rm = T),
+    num_women = sum(c_across(starts_with("gender")) =="Female",na.rm = T),
+    hh_size = num_men + num_women
+  ) %>%
+ungroup()
+
+head(dt3)
+
+```
+
+
+```{r female hh, echo=TRUE}
+
+#### print female in hh
+
+dt4 <- dt3 %>%
+  rowwise() %>%
+  mutate(
+    female_hh = ifelse(num_women>=5,1,0)) %>%
+  ungroup()
+
+head(dt4)
+
+```
+
+### Validation Checks
+
+```{r na check1, echo=TRUE}
+
+### check NAs
+#### total NAs in data
+sum(is.na(dt4))
+
+```
+
+
+```{r na check2, echo=TRUE}
+
+#### atleast a row with NA 
+sum(rowSums(is.na(dt4))>0)
+
+```
+
+```{r na check3, echo=TRUE}
+
+#### count Nas per col
+colSums(is.na(dt4))
+
+```
+
+
+```{r na imputation, echo=TRUE}
+
+#### replace NA in a col w 0
+dt4$incfarm[is.na(dt4$incfarm)] <- 0
+
+
+```
+
+
+```{r outlier check, echo=TRUE}
+
+### check for outliers
+
+inc_summary <- dt4 %>%
+  filter(incfarm > 0 ) %>%
+  summarise(
+    mean_income = mean(incfarm),
+    min_income = min(incfarm),
+    q1 = quantile(incfarm,0.25),
+    median_income = median(incfarm),
+    q3 = quantile(incfarm,0.75),
+    max_income = max(incfarm)
+  )
+
+print(inc_summary)
+
+
+```
+
+## Analysis
+
+### Overall Breakouts
+
+```{r boxplot, echo=TRUE}
+
+#### Plot a boxplot of incfarm
+
+ggplot(dt4, aes(y = incfarm)) +
+  geom_boxplot(fill = "lightblue")+
+  scale_y_log10(
+    labels = scales::comma_format(),
+    breaks = scales::log_breaks(n = 10)
+  )+
+  labs(title = "Farm Income Distribution", y= "Income")
+
+
+```
+
+
+
+```{r pop by country, echo=TRUE}
+
+#### number of people per country
+
+country_pop <- dt4 %>%
+  select(hh_size,country) %>% 
+  group_by(country) %>%
+  summarise(total_pop = sum(hh_size)) %>%
+  mutate(percentage = total_pop/sum(total_pop)*100)
+
+
+```
+
+
+```{r plot 1, echo=TRUE}
+
+##### plot 1
+
+ggplot(country_pop,aes(x = country,y= total_pop, fill = country)) +
+  geom_bar(stat = "identity",width = 0.7) +
+  geom_text(aes(label = paste0(round(percentage,1),"%")),
+            vjust = -0.3,size = 3.5) +
+  geom_text(aes(label = total_pop),
+            vjust = 1.2, size = 3.5) +
+  labs(title = "Number of people per country",x = "Country",y= "Total Population") +
+  theme_minimal()+
+  theme(legend.position = "none")
+
+
+```
+
+
+```{r prop of female hh, echo=TRUE}
+
+#### prop of female hh
+
+proportion_of_fhh <- mean(dt4$female_hh) * 100
+
+print (proportion_of_fhh)
+
+
+```
+
+```{r plot 2, echo=TRUE}
+
+#### gender distr
+gender_dt <- data.frame(
+  category = c("Female-headed","Male-headed"),
+  counts = c(sum(dt4$female_hh),nrow(dt4) - sum(dt4$female_hh))
+)
+
+##### plot 2
+ggplot(gender_dt,aes(x = "",y = counts, fill = category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  geom_text(aes(label = paste0(round(counts/sum(counts) * 100,2),"%")),
+            position = position_stack(vjust = 0.5))+
+  labs(title = paste0("Proportion of female households: ",
+                      round(proportion_of_fhh,2), "%")) +
+  theme_void()+
+  theme(legend.title = element_blank(),
+        legend.position = "bottom")
+
+
+```
+
+
+### Distribution of farm income in Ghana
+
+```{r ghana farm income, echo=TRUE}
+
+### filter for ghana
+gh_f_inc <- dt4 %>%
+  filter(country == "ghana") 
+
+### print summary stats
+gh_f_inc_summary <- gh_f_inc %>%
+  select(country,incfarm) %>%
+  summarise(
+    mean_income = mean(incfarm),
+    median_income = median(incfarm),
+    sd_income = sd(incfarm),
+    min_income = min(incfarm),
+    max_income = max(incfarm)
+  )
+
+print(gh_f_inc_summary)
+
+```
+
+
+
+```{r plot 3, echo=TRUE}
+
+##### plot 3
+
+ggplot(gh_f_inc,aes(y = incfarm))+
+  geom_boxplot(fill = "lightblue") +
+  scale_y_log10(
+    labels = scales::comma_format(),
+    breaks = scales::log_breaks(n = 10)
+  )+
+  labs(title = "Farm Income Distribution Plot",y = "Income")
+
+```
+
+### Age Distribution
+
+```{r plot 4, echo=TRUE}
+
+##### plot 4
+ggplot(dt4,aes(x = age1)) +
+  geom_histogram(binwidth = 5,fill = "blue", color = "black") +
+  labs(title = "Age Distribution", x = "Age", y = "Frequency")
+
+```
+
+
+```{r gender stats, echo=TRUE}
+
+#### gender descriptive stats
+gender_analysis <-   gh_f_inc %>% 
+  group_by(female_hh) %>%
+  summarise(
+    mean_income = mean(incfarm),
+    sd_income = sd(incfarm)
+  )
+
+#### gender
+t.test(incfarm ~female_hh, data = gh_f_inc)
+
+```
+
+#### Overall Conclusion:
+
+* No Significant Difference: The t-test results indicate that there is no statistically significant difference in mean income between group 0 and group 1. The difference observed in the sample means could likely be due to random chance.
+* Fail to Reject the Null Hypothesis: The high p-value and the confidence interval including 0 mean that you do not have enough evidence to reject the null hypothesis of no difference in means between the two groups.
+* This analysis suggests that, based on the data provided, the incomes in the two groups are not significantly different.
+
+### Education Distribution
+
+```{r education, echo=TRUE}
+
+#### education 
+aov_result <- aov(incfarm ~educ1, data = gh_f_inc)
+summary(aov_result)
+
+```
+
+
+#### Overall Interpretation:
+
+* Statistical Significance: The factor educ1 has a statistically significant effect on the response variable (e.g., income) at the 5% significance level. This means that the difference in the response variable across the levels of educ1 is unlikely to be due to random chance.
+* Magnitude of Effect: Although the result is statistically significant, the F value is relatively modest (5.585), suggesting that while educ1 has an effect, it might not explain a large proportion of the variance in the response variable.
+* In summary, the ANOVA results indicate that the variable educ1 significantly affects the response variable, suggesting that differences in educ1 levels are associated with differences in the response variable (e.g., income).
+
+### Age Distribution
+
+```{r age, echo=TRUE}
+
+#### age
+aov_result1 <- aov(incfarm~age1, data = gh_f_inc)
+summary(aov_result1)
+
+```
+
+
+#### Overall Interpretation:
+
+* Statistical Significance: The factor age1 has a statistically significant effect on the response variable (e.g., income) at the 5% significance level. This means that the difference in the response variable across the levels of age is unlikely to be due to random chance.
+* Magnitude of Effect: Although the result is statistically significant, the F value is fairly high (13.45), suggesting that age1 has an effect, and it may explain a large proportion of the variance in the response variable.
+* In summary, the ANOVA results indicate that the variable age1 significantly affects the response variable, suggesting that differences in age1 levels are associated with differences in the response variable (e.g., income).
+
+### Sickdays Distribution
+
+```{r sickdays, echo=TRUE}
+
+#### sickdays
+aov_result2 <- aov(incfarm~sickdays , data = gh_f_inc)
+summary(aov_result2)
+
+```
+
+
+
+#### Overall Interpretation:
+
+* No Significant Difference: The factor sickdays has no statistically significant effect on the response variable (e.g., income) at the 5% significance level. This means that the difference in the response variable across the levels of sickdays could likely be due to random chance.
+* Magnitude of Effect: While the result is not statistically significant, the F value is almost 0 (0.309), suggesting that sickdays has minimal effect, and it cannot explain the variance in the response variable.
+* In summary, the ANOVA results indicate that the variable sickdays does not significantly affect the response variable, suggesting that differences in sickdays levels are not associated with differences in the response variable (e.g., income).
+
+
+```{r multiple linear regression, echo=TRUE}
+
+#### multiple linear regression
+lm_result <- lm(incfarm ~ female_hh + educ1 + age1 + sickdays ,data = gh_f_inc)
+summary(lm_result)
+
+```
+
+
